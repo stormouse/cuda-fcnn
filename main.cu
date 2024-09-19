@@ -30,9 +30,9 @@ int main() {
     int dim = 16;
     CUDA_CALL(cudaMalloc((void **)&d_input, dim * sizeof(float)));
 
-    std::vector<int> layers{dim, 5, dim};
+    std::vector<int> layers{dim, 4, dim};
     Model model(layers);
-    float lr = 0.5f;
+    float lr = 0.01f;
 
     auto h_input = generateRandomVector(dim);
 
@@ -51,9 +51,21 @@ int main() {
         lr *= 0.98f;
     }
 
-    printKernel<<<1, 1>>>(model.layers.back()->W, layers.back());
-    printKernel<<<1, 1>>>(model.layers.back()->b, layers.back());
+    for (int i = 0; i < layers.size() - 1; i++) {
+        std::cout << "W:" << std::endl;
+        printKernel<<<1, 1>>>(model.layers[i]->W, layers[i] * layers[i + 1]);
+        cudaDeviceSynchronize();
+        std::cout << "b:" << std::endl;
+        printKernel<<<1, 1>>>(model.layers[i]->b, layers[i + 1]);
+        cudaDeviceSynchronize();
+        std::cout << "a:" << std::endl;
+        printKernel<<<1, 1>>>(model.layers[i]->a, layers[i + 1]);
+        cudaDeviceSynchronize();
+        std::cout << "\n\n\n" << std::endl;
+    }
+
     printKernel<<<1, 1>>>(model.layers.back()->a, layers.back());
+    cudaDeviceSynchronize();
     for (int i = 0; i < layers.back(); i++) {
         std::cout << "Label[" << i << "] = " << h_input[i] << "\n";
     }
