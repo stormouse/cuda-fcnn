@@ -27,26 +27,27 @@ std::vector<float> generateRandomVector(size_t size) {
 
 int main() {
     float *d_input;
-    CUDA_CALL(cudaMalloc((void **)&d_input, 8 * sizeof(float)));
+    int dim = 16;
+    CUDA_CALL(cudaMalloc((void **)&d_input, dim * sizeof(float)));
 
-    std::vector<int> layers{8, 8};
+    std::vector<int> layers{dim, 5, dim};
     Model model(layers);
     float lr = 0.5f;
 
-    auto h_input = generateRandomVector(8);
+    auto h_input = generateRandomVector(dim);
 
     for (int t = 0; t < 100; t++)
     {
         float epochLoss = 0.0f;
         for (int i = 0; i < 1000; i++)
         {
-            h_input = generateRandomVector(8);
-            CUDA_CALL(cudaMemcpy(d_input, h_input.data(), 8 * sizeof(float), cudaMemcpyHostToDevice));
+            h_input = generateRandomVector(dim);
+            CUDA_CALL(cudaMemcpy(d_input, h_input.data(), dim * sizeof(float), cudaMemcpyHostToDevice));
 
             auto loss = model.fit(d_input, d_input, lr);
             epochLoss += loss;
         }
-        std::cout << "epoch " << t << ": loss = " << epochLoss / 100 << ", lr = " << lr << "\n";
+        std::cout << "epoch " << t << ": loss = " << epochLoss / 1000 << ", lr = " << lr << "\n";
         lr *= 0.98f;
     }
 

@@ -261,6 +261,7 @@ float Model::fit(float *x_device, float *y_device, float lr)
     for (int i = layers.size() - 2; i >= 0; i--)
     {
         layers[i]->backPropagate(layers[i + 1]->W, layers[i + 1]->db, dims[i + 1]);
+        cudaDeviceSynchronize();
     }
 
     for (int i = 0; i < layers.size(); i++)
