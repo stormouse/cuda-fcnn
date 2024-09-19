@@ -25,30 +25,35 @@ std::vector<float> generateRandomVector(size_t size) {
     return v;
 }
 
-int main() {
-    float *d_input;
+int main()
+{
     int dim = 16;
-    CUDA_CALL(cudaMalloc((void **)&d_input, dim * sizeof(float)));
+    int numInputs = 100;
+    auto inputs = std::vector<float*>(numInputs, nullptr);
+    
+    for (int i = 0; i < numInputs; i++) {
+        auto h_input = generateRandomVector(dim);
+        CUDA_CALL(cudaMalloc((void **)&inputs[i], dim * sizeof(float)));
+        CUDA_CALL(cudaMemcpy(inputs[i], h_input.data(), dim * sizeof(float), cudaMemcpyHostToDevice));
+        cudaDeviceSynchronize();
+    }
 
-    std::vector<int> layers{dim, 4, dim};
+    // there is a bug - {dim, dim-1, dim} cannot learn but {dim, dim, dim} can learn perfectly well
+    // something about the matrix shape must be wrong, causing buffer overflow (and square matrix mitigated that)
+    std::vector<int> layers{dim, dim, dim};
     Model model(layers);
-    float lr = 0.01f;
-
-    auto h_input = generateRandomVector(dim);
+    float lr = 0.1f;
 
     for (int t = 0; t < 100; t++)
     {
         float epochLoss = 0.0f;
-        for (int i = 0; i < 1000; i++)
+        for (int i = 0; i < inputs.size(); i++)
         {
-            h_input = generateRandomVector(dim);
-            CUDA_CALL(cudaMemcpy(d_input, h_input.data(), dim * sizeof(float), cudaMemcpyHostToDevice));
-
-            auto loss = model.fit(d_input, d_input, lr);
+            auto loss = model.fit(inputs[i], inputs[i], lr);
             epochLoss += loss;
         }
-        std::cout << "epoch " << t << ": loss = " << epochLoss / 1000 << ", lr = " << lr << "\n";
-        lr *= 0.98f;
+        std::cout << "epoch " << t << ": loss = " << epochLoss / inputs.size() << ", lr = " << lr << "\n";
+        lr *= 0.99f;
     }
 
     for (int i = 0; i < layers.size() - 1; i++) {
@@ -66,15 +71,16 @@ int main() {
 
     printKernel<<<1, 1>>>(model.layers.back()->a, layers.back());
     cudaDeviceSynchronize();
-    for (int i = 0; i < layers.back(); i++) {
-        std::cout << "Label[" << i << "] = " << h_input[i] << "\n";
-    }
+
+    printKernel<<<1, 1>>>(inputs.back(), dim);
 
     std::cout << "\n";
 
     cudaDeviceSynchronize();
 
-    CUDA_CALL(cudaFree(d_input));
+    for (int i = 0; i < inputs.size(); i++) {
+        CUDA_CALL(cudaFree(inputs[i]));
+    }
 
     return 0;
 }

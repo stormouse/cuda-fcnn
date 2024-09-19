@@ -99,7 +99,7 @@ void FcLayer::backPropagate(float *wNext, float* dNext, int dimNext)
 {
     float one = 1.0f;
     float zero = 0.0f;
-
+    
     // db = d = (W_1)^T * d_1 . d_sigmoid(input)
     CUBLAS_CHECK(cublasSgemm(handle,
         CUBLAS_OP_T,
@@ -111,7 +111,7 @@ void FcLayer::backPropagate(float *wNext, float* dNext, int dimNext)
         &zero,
         db, outputDim));
     
-    d_sigmoid_mul_kernel<<<dimGrid,dimBlock>>>(db, input, outputDim);
+    d_sigmoid_mul_kernel<<<dimGrid,dimBlock>>>(db, z, outputDim);
     CHECK_LAST_CUDA_ERROR();
 
     // dW = d * input
@@ -188,8 +188,6 @@ FcLayer::FcLayer(int inputDim, int outputDim, cublasHandle_t& handle)
     CUBLAS_CHECK(cublasSscal(this->handle, inputDim * outputDim, &rr, W, 1));
     CUBLAS_CHECK(cublasSscal(this->handle, outputDim, &rr, b, 1));
 
-    cudaDeviceSynchronize();
-
     printKernel<<<1, 1>>>(W, inputDim * outputDim);
 }
 
@@ -243,25 +241,23 @@ float Model::fit(float *x_device, float *y_device, float lr)
     CHECK_LAST_CUDA_ERROR();
     d_cross_entropy_kernel<<<dimGrid, dimBlock>>>(layers.back()->a, y_device, layers.back()->db, lastDim);
     CHECK_LAST_CUDA_ERROR();
-    d_sigmoid_mul_kernel<<<dimGrid,dimBlock>>>(layers.back()->db, layers.back()->a, lastDim);
+    d_sigmoid_mul_kernel<<<dimGrid,dimBlock>>>(layers.back()->db, layers.back()->z, lastDim);
     CHECK_LAST_CUDA_ERROR();
 
     // dW = d * input
     CUBLAS_CHECK(cublasSgemm(handle,
         CUBLAS_OP_N,
         CUBLAS_OP_T,
-        lastDim, dims[dims.size() - 1], 1,
+        lastDim, dims[dims.size() - 2], 1,
         &one,
         layers.back()->db, lastDim,
         layers.size() > 2 ? layers[layers.size() - 2]->a : x_device, dims[dims.size() - 1],
         &zero,
         layers.back()->dW, lastDim));
 
-
     for (int i = layers.size() - 2; i >= 0; i--)
     {
         layers[i]->backPropagate(layers[i + 1]->W, layers[i + 1]->db, dims[i + 1]);
-        cudaDeviceSynchronize();
     }
 
     for (int i = 0; i < layers.size(); i++)
@@ -271,10 +267,10 @@ float Model::fit(float *x_device, float *y_device, float lr)
 
     // reduce<256><<<dimGrid, dimBlock>>>(error_device, loss_device);
 
-    cudaDeviceSynchronize();
-
     // CUDA_CALL(cudaMemcpy(&previousLoss, loss_device, sizeof(float), cudaMemcpyDeviceToHost));
     cudaMemcpy(lossVector.data(), loss_device, lastDim * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaDeviceSynchronize();
 
     auto loss = 0.0f;
     for (auto v : lossVector) {
